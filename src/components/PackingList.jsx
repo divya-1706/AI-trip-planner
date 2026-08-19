@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { CheckSquare, Square, Plus, RefreshCw, Luggage, Shirt, Smartphone, FileText, Sparkles, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckSquare, Square, Plus, Luggage, Shirt, Smartphone, FileText, Sparkles, Trash2 } from 'lucide-react';
+import { useTripContext } from '../context/TripContext';
 
 const categoryIcons = {
   clothing: <Shirt className="w-5 h-5 text-indigo-500" />,
@@ -18,55 +19,94 @@ const defaultPacking = {
 };
 
 const PackingList = ({ packingList: initialList }) => {
-  const listToUse = (initialList && Object.keys(initialList).length > 0) ? initialList : defaultPacking;
+  const { tripData, updateActiveTripPackingList } = useTripContext();
 
-  // Initialize items state with checked flag
-  const [items, setItems] = useState(() => {
+  const buildInitialItems = () => {
+    // 1. If active trip has an existing saved packing list state, use it
+    if (tripData?.packing_list_state && Object.keys(tripData.packing_list_state).length > 0) {
+      return tripData.packing_list_state;
+    }
+
+    // 2. Otherwise convert initialList or defaultPacking into [{ text, checked: false }] objects
+    const listToUse = (initialList && Object.keys(initialList).length > 0) ? initialList : defaultPacking;
     const initialState = {};
     Object.entries(listToUse).forEach(([category, itemList]) => {
-      initialState[category] = itemList.map(item => ({ text: item, checked: false }));
+      if (Array.isArray(itemList)) {
+        initialState[category] = itemList.map(item =>
+          typeof item === 'string' ? { text: item, checked: false } : item
+        );
+      } else {
+        initialState[category] = [];
+      }
     });
     return initialState;
-  });
+  };
 
+  const [items, setItems] = useState(buildInitialItems);
   const [activeCategory, setActiveCategory] = useState('all');
   const [newItemText, setNewItemText] = useState('');
-  const [targetCategory, setTargetCategory] = useState(Object.keys(listToUse)[0] || 'clothing');
+  const [targetCategory, setTargetCategory] = useState('clothing');
+
+  // Sync state if active trip destination/dates change
+  useEffect(() => {
+    setItems(buildInitialItems());
+  }, [tripData?.trip_details?.destination, tripData?.trip_details?.dates]);
+
+  // Helper to sync changes locally and to context/storage
+  const saveState = (newItems) => {
+    setItems(newItems);
+    if (updateActiveTripPackingList) {
+      updateActiveTripPackingList(newItems);
+    }
+  };
 
   const toggleCheck = (category, index) => {
-    setItems(prev => ({
-      ...prev,
-      [category]: prev[category].map((item, idx) => 
+    const newItems = {
+      ...items,
+      [category]: items[category].map((item, idx) =>
         idx === index ? { ...item, checked: !item.checked } : item
       )
-    }));
+    };
+    saveState(newItems);
   };
 
   const handleAddItem = (e) => {
     e.preventDefault();
     if (!newItemText.trim()) return;
-    setItems(prev => ({
-      ...prev,
-      [targetCategory]: [
-        ...(prev[targetCategory] || []),
+    const cat = targetCategory || Object.keys(items)[0] || 'clothing';
+    const newItems = {
+      ...items,
+      [cat]: [
+        ...(items[cat] || []),
         { text: newItemText.trim(), checked: false }
       ]
-    }));
+    };
+    saveState(newItems);
     setNewItemText('');
+  };
+
+  const handleDeleteItem = (e, category, index) => {
+    e.stopPropagation(); // prevent triggering check toggle
+    const newItems = {
+      ...items,
+      [category]: items[category].filter((_, idx) => idx !== index)
+    };
+    saveState(newItems);
   };
 
   // Calculate totals
   let totalItems = 0;
   let checkedItems = 0;
   Object.values(items).forEach(catItems => {
-    catItems.forEach(item => {
-      totalItems++;
-      if (item.checked) checkedItems++;
-    });
+    if (Array.isArray(catItems)) {
+      catItems.forEach(item => {
+        totalItems++;
+        if (item.checked) checkedItems++;
+      });
+    }
   });
 
   const progressPercent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
-
   const categories = Object.keys(items);
 
   return (
@@ -157,23 +197,35 @@ const PackingList = ({ packingList: initialList }) => {
                 {category}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {items[category].map((item, idx) => (
-                  <button
+                {items[category]?.map((item, idx) => (
+                  <div
                     key={idx}
                     onClick={() => toggleCheck(category, idx)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all ${
+                    className={`group flex items-center justify-between p-3 rounded-lg border text-left transition-all cursor-pointer ${
                       item.checked
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 line-through'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                         : 'bg-white border-gray-200 text-gray-800 hover:border-indigo-300 hover:shadow-sm'
                     }`}
                   >
-                    {item.checked ? (
-                      <CheckSquare className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <Square className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                    )}
-                    <span className="text-sm font-medium">{item.text}</span>
-                  </button>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {item.checked ? (
+                        <CheckSquare className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      )}
+                      <span className={`text-sm font-medium truncate ${item.checked ? 'line-through text-emerald-700' : ''}`}>
+                        {item.text}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteItem(e, category, idx)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1 transition-opacity ml-2"
+                      title="Delete Item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

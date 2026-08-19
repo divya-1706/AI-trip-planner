@@ -91,6 +91,43 @@ export const TripProvider = ({ children }) => {
     setActiveTripData(null);
   };
 
+  const updateActiveTripPackingList = (packingState) => {
+    setTripData(prev => {
+      if (!prev) return prev;
+      const updatedTrip = {
+        ...prev,
+        packing_list_state: packingState
+      };
+      try {
+        localStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify(updatedTrip));
+      } catch (e) {
+        console.error("Failed to save active trip packing state", e);
+      }
+
+      setSavedTrips(prevSaved => {
+        const updatedSaved = prevSaved.map(item => {
+          if (
+            item.data &&
+            item.data.trip_details?.origin === updatedTrip.trip_details?.origin &&
+            item.data.trip_details?.destination === updatedTrip.trip_details?.destination &&
+            item.data.trip_details?.dates === updatedTrip.trip_details?.dates
+          ) {
+            return { ...item, data: updatedTrip };
+          }
+          return item;
+        });
+        try {
+          localStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify(updatedSaved));
+        } catch (e) {
+          console.error("Failed to save updated trips to storage", e);
+        }
+        return updatedSaved;
+      });
+
+      return updatedTrip;
+    });
+  };
+
   return (
     <TripContext.Provider
       value={{
@@ -100,6 +137,7 @@ export const TripProvider = ({ children }) => {
         error,
         handleGenerateTrip,
         setActiveTripData,
+        updateActiveTripPackingList,
         deleteSavedTrip,
         clearAllSavedTrips,
         resetActiveTrip
