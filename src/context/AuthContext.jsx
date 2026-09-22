@@ -1,23 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const USER_SESSION_KEY = 'ai_trip_planner_user';
-const REGISTERED_USERS_KEY = 'ai_trip_planner_registered_users';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [registeredUsers, setRegisteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load user session and registered user database on mount
+  // Load user session on mount
   useEffect(() => {
     try {
-      const storedUsers = localStorage.getItem(REGISTERED_USERS_KEY);
-      if (storedUsers) {
-        setRegisteredUsers(JSON.parse(storedUsers));
-      }
-
       const storedUser = localStorage.getItem(USER_SESSION_KEY);
       if (storedUser) {
         setUser(JSON.parse(storedUser));
@@ -29,15 +23,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const saveRegisteredUsers = (users) => {
-    setRegisteredUsers(users);
-    try {
-      localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(users));
-    } catch (e) {
-      console.error("Failed to save registered users", e);
-    }
-  };
-
   const saveUserSession = (userData) => {
     setUser(userData);
     try {
@@ -48,70 +33,32 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Account Registration (Sign Up)
-  const signUp = (name, email, password) => {
-    const cleanEmail = email.trim().toLowerCase();
-    
-    // Check if email is already registered
-    const existing = registeredUsers.find(u => u.email === cleanEmail);
-    if (existing) {
-      throw new Error("An account with this email already exists. Please sign in instead.");
+  const signUp = async (name, email, password) => {
+    const response = await fetch(`${API_BASE_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sign up');
     }
-
-    const newUser = {
-      id: Date.now().toString(),
-      name: name.trim() || cleanEmail.split('@')[0],
-      email: cleanEmail,
-      password: password.trim(),
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name || cleanEmail)}`,
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedUsers = [...registeredUsers, newUser];
-    saveRegisteredUsers(updatedUsers);
-
-    // Auto sign-in after account creation
-    const sessionData = {
-      id: newUser.id,
-      name: newUser.name,
-      email: newUser.email,
-      avatar: newUser.avatar,
-      loggedInAt: new Date().toISOString()
-    };
-    saveUserSession(sessionData);
-
-    return sessionData;
+    return data;
   };
 
   // Account Sign In (Login with Credential Validation)
-  const signIn = (email, password) => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
-
-    // Check credentials against registered database
-    const matchingUser = registeredUsers.find(
-      u => u.email === cleanEmail && u.password === cleanPassword
-    );
-
-    if (!matchingUser) {
-      // Check if email exists to give a specific helpful error
-      const emailExists = registeredUsers.some(u => u.email === cleanEmail);
-      if (emailExists) {
-        throw new Error("Incorrect password. Please try again.");
-      } else {
-        throw new Error("No account found with this email. Please click 'Create Account' to sign up.");
-      }
+  const signIn = async (email, password) => {
+    const response = await fetch(`${API_BASE_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sign in');
     }
-
-    const sessionData = {
-      id: matchingUser.id,
-      name: matchingUser.name,
-      email: matchingUser.email,
-      avatar: matchingUser.avatar,
-      loggedInAt: new Date().toISOString()
-    };
-    saveUserSession(sessionData);
-
-    return sessionData;
+    saveUserSession(data);
+    return data;
   };
 
   const logout = () => {
