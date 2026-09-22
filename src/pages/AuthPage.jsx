@@ -14,7 +14,7 @@ const AuthPage = () => {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
 
-  const handleAuth = (e) => {
+  const handleAuth = async (e) => {
     e.preventDefault();
     setError(null);
 
@@ -34,15 +34,16 @@ const AuthPage = () => {
       }
 
       try {
-        signUp(name, email, password);
-        navigate('/plan');
+        const result = await signUp(name, email, password);
+        alert(result.message);
+        setIsSignUp(false); // Switch to login screen after successful signup
       } catch (err) {
         setError(err.message);
       }
     } else {
       // Sign In validation
       try {
-        signIn(email, password);
+        await signIn(email, password);
         navigate('/plan');
       } catch (err) {
         setError(err.message);
